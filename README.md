@@ -1,4 +1,4 @@
-# ChatGPT Clone UI
+# SMU DATATHON
 
 A modern, clean ChatGPT-style chatbot interface built with **Python Streamlit**.
 
