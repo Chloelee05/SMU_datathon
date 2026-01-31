@@ -1,0 +1,5 @@
+﻿vessel_id,vessel_name,dwt_mt,hire_rate_usd_per_day,econ_speed_laden_kn,econ_speed_ballast_kn,warranted_speed_laden_kn,warranted_speed_ballast_kn,econ_fuel_laden_vlsf_mt_per_day,econ_fuel_laden_mgo_mt_per_day,econ_fuel_ballast_vlsf_mt_per_day,econ_fuel_ballast_mgo_mt_per_day,warranted_fuel_laden_vlsf_mt_per_day,warranted_fuel_laden_mgo_mt_per_day,warranted_fuel_ballast_vlsf_mt_per_day,warranted_fuel_ballast_mgo_mt_per_day,port_idle_mgo_mt_per_day,port_working_mgo_mt_per_day,current_port,current_region,etd_date,rob_vlsf_mt,rob_mgo_mt
+cv_1,ANN BELL,180803,11750,12,12.5,13.5,14.5,42,2,38,2,13.5,2,14.5,2,2,3,QINGDAO,CHINA,25/2/2026,401.3,45.1
+cv_2,OCEAN HORIZON,181550,15750,12.3,12.8,13.8,14.8,43,1.8,39.5,1.8,13.8,1.8,14.8,1.8,1.8,3.2,MAP TA PHUT,SE_ASIA,1/3/2026,265.8,64.3
+cv_3,PACIFIC GLORY,182320,14800,12.2,12.7,13.5,14.2,44,1.9,40,1.9,13.5,1.9,14.2,1.9,2,3,GWANGYANG,KOREA,10/3/2026,601.9,98.1
+cv_4,GOLDEN ASCENT,179965,13950,11.8,12.3,13,14,41,2,37,2,13,2,14,2,1.9,3.1,FANGCHENG,CHINA,8/3/2026,793.3,17.1

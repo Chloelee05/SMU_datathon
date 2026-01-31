@@ -1,0 +1,4 @@
+﻿cargo_id,start_region,end_region,customer,commodity,quantity_mt,quantity_tolerance_pct,quantity_type,freight_rate_usd_per_mt,commission_pct,commission_type,laycan_start_date,laycan_end_date,load_port,load_port_remarks,load_port_cost_usd,load_rate_mt_per_day,load_turn_time_hr,load_type,discharge_port,discharge_port_remarks,discharge_port_cost_usd,discharge_rate_mt_per_day,discharge_turn_time_hr,discharge_type
+cc_1,WEST AFRICA,CHINA, EGA , BAUXITE ,180000,10,Owner's Option,23,1.25,BROKER,2/4/2026,10/4/2026,KAMSAR ANCHORAGE,,0,30000,12,PWWD SHINC,QINGDAO,,0,25000,12,PWWD SHINC
+cc_2,AUSTRALIA,CHINA, BHP , IRON ORE ,160000,10,Half freight applies to any cargo loaded in excess of 176000 MT,9,3.75,CHARTERER,7/3/2026,11/3/2026,PORT HEDLAND,,260000,80000,12,PWWD SHINC,LIANYUNGANG,,120000,30000,24,PWWD SHINC
+cc_3,BRAZIL,CHINA, CSN , IRON ORE ,180000,10,MOLOO,22.3,3.75,CHARTERER,1/4/2026,8/4/2026,ITAGUAI,,75000,60000,6,PWWD SHINC,QINGDAO,,90000,30000,24,PWWD SHINC
