@@ -11,59 +11,74 @@ st.set_page_config(
 # CSS - Sidebar flex layout으로 프로필 하단 고정
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+    :root {
+        --bg: #1b1b1b;
+        --bg-2: #202020;
+        --panel: #242424;
+        --panel-2: #2a2a2a;
+        --text: #e7e7e7;
+        --muted: #a9a9a9;
+        --accent: #12b981;
+        --border: rgba(255,255,255,0.08);
+    }
+
+    html, body, [class*="css"]  {
+        font-family: "Space Grotesk", sans-serif;
+    }
+
     /* Main background */
     .stApp {
-        background-color: #ffffff;
+        background: radial-gradient(1200px 800px at 20% -10%, #2a2a2a 0%, #1b1b1b 45%, #191919 100%);
+        color: var(--text);
     }
     
     /* Main content */
     .main .block-container {
-        max-width: 800px;
+        max-width: 900px;
         margin: 0 auto;
         padding: 1rem 1rem 6rem 1rem;
     }
     
     /* Sidebar */
     section[data-testid="stSidebar"] {
-        background-color: #fafafa !important;
-        border-right: 1px solid #eaeaea;
-    }
-    
-    section[data-testid="stSidebar"] > div {
-        background-color: #fafafa !important;
+        display: none !important;
     }
     
     /* 사이드바 버튼 */
     section[data-testid="stSidebar"] .stButton > button {
         background: none !important;
         border: none !important;
-        color: #333 !important;
-        padding: 0.5rem 0.75rem;
-        border-radius: 6px;
-        font-size: 0.875rem;
-        font-weight: 400;
-        text-align: left;
+        color: var(--muted) !important;
+        padding: 0.65rem 0.75rem;
+        border-radius: 12px;
+        font-size: 1.1rem;
+        font-weight: 500;
+        text-align: center;
         width: 100%;
     }
-    
+
     section[data-testid="stSidebar"] .stButton > button:hover {
-        background-color: #ebebeb !important;
+        background-color: #232323 !important;
+        color: var(--text) !important;
     }
     
     /* 섹션 라벨 */
     .section-label {
-        font-size: 0.7rem;
-        font-weight: 600;
-        color: #888;
+        font-size: 0.6rem;
+        font-weight: 700;
+        color: #6f6f6f;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        padding: 0.5rem 0.5rem 0.25rem;
+        letter-spacing: 1px;
+        padding: 0.4rem 0.5rem 0.25rem;
+        text-align: center;
     }
     
     /* Divider */
     section[data-testid="stSidebar"] hr {
         margin: 0.5rem 0 !important;
-        border-top: 1px solid #eaeaea !important;
+        border-top: 1px solid var(--border) !important;
     }
     
     /* 스크롤 영역 (Recent) */
@@ -80,32 +95,41 @@ st.markdown("""
     
     /* Chat input */
     .stChatInput > div {
-        background-color: #f7f7f7 !important;
-        border: 1px solid #e0e0e0 !important;
-        border-radius: 24px !important;
+        background-color: #2a2a2a !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 28px !important;
+        box-shadow: 0 12px 25px rgba(0,0,0,0.35);
     }
-    
+
     .stChatInput textarea {
         background: transparent !important;
-        color: #1a1a1a !important;
+        color: var(--text) !important;
+    }
+
+    .stChatInput ::placeholder {
+        color: #8a8a8a !important;
     }
     
     /* Chat messages */
     [data-testid="stChatMessageContent"] p {
-        color: #1a1a1a !important;
+        color: var(--text) !important;
     }
     
     /* Header */
     .header-text {
         text-align: center;
-        padding: 0.5rem;
+        padding: 1rem 0 0.5rem;
         font-size: 0.95rem;
-        color: #333;
+        color: var(--muted);
         font-weight: 500;
     }
-    
+
     .header-text span {
-        color: #10a37f;
+        color: var(--text);
+    }
+
+    .topbar {
+        display: none;
     }
     
     /* Welcome */
@@ -113,13 +137,14 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 60vh;
+        min-height: 62vh;
     }
-    
+
     .welcome-text {
-        font-size: 2rem;
+        font-size: 2.4rem;
         font-weight: 600;
-        color: #1a1a1a;
+        color: var(--text);
+        letter-spacing: -0.02em;
     }
     
     /* Dialog Modal */
@@ -131,7 +156,7 @@ st.markdown("""
     
     /* Profile header */
     .profile-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #2f9f79 0%, #1d6e53 100%);
         padding: 2rem 1.5rem;
         text-align: center;
         border-radius: 16px 16px 0 0;
@@ -169,7 +194,7 @@ st.markdown("""
         justify-content: center;
         gap: 2rem;
         padding: 1.25rem;
-        background: #f8f9fa;
+        background: #f3f3f3;
         margin: 0 -1rem;
     }
     
@@ -185,10 +210,10 @@ st.markdown("""
         margin: -1rem -1rem 1rem -1rem;
         color: white;
     }
-    .modal-header.settings { background: linear-gradient(135deg, #11998e, #38ef7d); }
-    .modal-header.theme { background: linear-gradient(135deg, #ee0979, #ff6a00); }
-    .modal-header.usage { background: linear-gradient(135deg, #4facfe, #00f2fe); }
-    .modal-header.help { background: linear-gradient(135deg, #fa709a, #fee140); }
+    .modal-header.settings { background: linear-gradient(135deg, #0f8e6e, #2ed67b); }
+    .modal-header.theme { background: linear-gradient(135deg, #ff7b0f, #ff3c6a); }
+    .modal-header.usage { background: linear-gradient(135deg, #1f8ef1, #18c0c8); }
+    .modal-header.help { background: linear-gradient(135deg, #f5a623, #fce38a); }
     
     .modal-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
     
@@ -314,60 +339,17 @@ if st.session_state.show_help:
     st.session_state.show_help = False
     show_help_modal()
 
-# ============ SIDEBAR - 3단 구조 ============
-with st.sidebar:
-    # ===== TOP: New Chat =====
-    if st.button("✏️  New chat", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.current_chat = None
-        st.toast("New chat!", icon="✨")
-        st.rerun()
-    
-    st.divider()
-    
-    # ===== MIDDLE: Recent (스크롤 영역) =====
-    with st.container():
-        st.markdown('<p class="section-label">Recent</p>', unsafe_allow_html=True)
-        
-        to_delete = None
-        for i, chat in enumerate(st.session_state.chat_history):
-            c1, c2 = st.columns([6, 1])
-            with c1:
-                if st.button(chat, key=f"c_{i}", use_container_width=True):
-                    st.session_state.current_chat = chat
-                    st.toast(f"Loaded: {chat}", icon="📂")
-            with c2:
-                if st.button("🗑", key=f"d_{i}"):
-                    to_delete = i
-        
-        if to_delete is not None:
-            removed = st.session_state.chat_history.pop(to_delete)
-            st.toast(f"Deleted: {removed}", icon="🗑️")
-            st.rerun()
-    
-    # ===== SPACER: 남은 공간 채우기 =====
-    # 채팅 히스토리 개수에 따라 빈 공간 추가
-    empty_slots = max(0, 10 - len(st.session_state.chat_history))
-    for _ in range(empty_slots):
-        st.write("")
-    
-    # ===== BOTTOM: Profile =====
-    st.divider()
-    if st.button("👤  Lee Chloe", use_container_width=True, key="profile_btn"):
-        st.session_state.show_profile = True
-        st.rerun()
-
 # ============ MAIN CONTENT ============
-st.markdown('<div class="header-text">FakeGPT <span>5.2 Instant</span> ▾</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-text">New conversation</div>', unsafe_allow_html=True)
 
 if not st.session_state.messages:
-    st.markdown('<div class="welcome-container"><h1 class="welcome-text">What can I help with?</h1></div>', unsafe_allow_html=True)
+    st.markdown('<div class="welcome-container"><h1 class="welcome-text">Where should we begin?</h1></div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Message FakeGPT..."):
+if prompt := st.chat_input("Ask anything"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
