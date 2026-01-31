@@ -903,6 +903,7 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
                 "ml_load_port_delay_days": ml_load_port_delay_days,
                 "ml_discharge_port_delay_days": ml_discharge_port_delay_days,
                 "ml_weather_factor": ml_weather_factor,
+                
             })
     
     print("Missing ballast dist: ", missing_ballast_dist)
@@ -1067,8 +1068,6 @@ if __name__ == "__main__":
 
 
     calculate(PRUNE, SPEED, DWT_MULTIPLIER, SPEED_MULTIPLIER, LOAD_PORT_DELAY, DISCHARGE_PORT_DELAY, VLSF_BUFFER_PCT, MGO_BUFFER_PCT, BUNKER_PORT_COST)
-
-
 
 
 
