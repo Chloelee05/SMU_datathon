@@ -82,6 +82,13 @@ def _norm_port(s: str) -> str:
     return str(s).strip().upper()
 
 
+# globals initialized by init_port_data
+ALIAS_TO_CANON: dict[str, str] = {}
+DISTANCE_NM: dict[tuple[str, str], float] = {}
+GRAPH: dict[str, list[tuple[str, float]]] = {}
+VALID_PORTS: list[str] = []
+
+
 def canon_port(p: str) -> str:
     x = _norm_port(p)
     return ALIAS_TO_CANON.get(x, x)
@@ -140,6 +147,38 @@ def get_distance_nm_safe(port_a: str, port_b: str, *, max_hops: int = 6) -> floa
     if d is not None:
         return d
     return _shortest_path_nm(a, b, max_hops=max_hops)
+
+
+def init_port_data(port_distances: pd.DataFrame, port_aliases: dict[str, list[str] | str]) -> None:
+    global ALIAS_TO_CANON, DISTANCE_NM, GRAPH, VALID_PORTS
+
+    # flatten to alias -> canonical
+    ALIAS_TO_CANON = {}
+    for canon, aliases in port_aliases.items():
+        canon_n = _norm_port(canon)
+        if isinstance(aliases, str):
+            aliases = [aliases]
+        for a in aliases:
+            a_n = _norm_port(a)
+            ALIAS_TO_CANON[a_n] = canon_n
+
+    # Build distance lookup + adjacency graph
+    _pd = port_distances.copy()
+    _pd["A"] = _pd["PORT_NAME_FROM"].astype(str).map(_norm_port)
+    _pd["B"] = _pd["PORT_NAME_TO"].astype(str).map(_norm_port)
+    _pd["D"] = pd.to_numeric(_pd["DISTANCE"], errors="coerce")
+
+    DISTANCE_NM = {}
+    GRAPH = {}
+    for a, b, d in zip(_pd["A"], _pd["B"], _pd["D"]):
+        if pd.notna(d):
+            dd = float(d)
+            DISTANCE_NM[(a, b)] = dd
+            DISTANCE_NM[(b, a)] = dd
+            GRAPH.setdefault(a, []).append((b, dd))
+            GRAPH.setdefault(b, []).append((a, dd))
+
+    VALID_PORTS = sorted({p for (x, y) in DISTANCE_NM.keys() for p in (x, y)})
 
 
 
@@ -567,14 +606,6 @@ if __name__ == "__main__":
         "VANCOUVER (CANADA)": ["VANCOUVER"]
     }
     
-    # flatten to alias -> canonical
-    ALIAS_TO_CANON: dict[str, str] = {}
-    for canon, aliases in PORT_ALIASES.items():
-        canon_n = _norm_port(canon)
-        for a in aliases:
-            a_n = _norm_port(a)
-            ALIAS_TO_CANON[a_n] = canon_n
-
     # -----------------------------
     # Load data
     # -----------------------------
@@ -614,41 +645,7 @@ if __name__ == "__main__":
         raise ValueError(f"Duplicate cargo_id keys found:\n{dupes.to_string(index=False)}")
 
 
-    # build distance lookup
-    _pd = port_distances.copy()
-    _pd["A"] = _pd["PORT_NAME_FROM"].map(_norm_port)
-    _pd["B"] = _pd["PORT_NAME_TO"].map(_norm_port)
-    _pd["D"] = pd.to_numeric(_pd["DISTANCE"], errors="coerce")
-
-    # O(1) lookup map (symmetric)
-    DISTANCE_NM: dict[tuple[str, str], float] = {}
-    for a, b, d in zip(_pd["A"], _pd["B"], _pd["D"]):
-        if pd.notna(d):
-            DISTANCE_NM[(a, b)] = float(d)
-            DISTANCE_NM[(b, a)] = float(d)
-
-
-    # -----------------------------
-    # port distance
-    # -----------------------------
-    # Build distance lookup + adjacency graph (once)
-    _pd = port_distances.copy()
-    _pd["A"] = _pd["PORT_NAME_FROM"].astype(str).map(_norm_port)
-    _pd["B"] = _pd["PORT_NAME_TO"].astype(str).map(_norm_port)
-    _pd["D"] = pd.to_numeric(_pd["DISTANCE"], errors="coerce")
-
-    DISTANCE_NM: dict[tuple[str, str], float] = {}
-    GRAPH: dict[str, list[tuple[str, float]]] = {}
-
-    for a, b, d in zip(_pd["A"], _pd["B"], _pd["D"]):
-        if pd.notna(d):
-            dd = float(d)
-            DISTANCE_NM[(a, b)] = dd
-            DISTANCE_NM[(b, a)] = dd
-            GRAPH.setdefault(a, []).append((b, dd))
-            GRAPH.setdefault(b, []).append((a, dd))
-
-    VALID_PORTS = sorted({p for (x, y) in DISTANCE_NM.keys() for p in (x, y)})
+    init_port_data(port_distances, PORT_ALIASES)
 
 
 
