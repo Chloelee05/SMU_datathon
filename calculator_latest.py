@@ -648,6 +648,20 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
 
 
 
+            # Contribution (hire cancels out for owned/Cargill vessels vs being idle)
+            contribution_usd = net_revenue - port_costs - bunker_cost
+            contribution_usd_per_day = contribution_usd / total_days
+
+            # Decision metric:
+            # - Cargill vessel: maximize contribution (since hire is sunk anyway)
+            # - Market vessel: maximize profit post bunker (since hire is avoidable)
+            decision_profit = contribution_usd if v["_src"] == "cargill" else profit_post_bunker
+            decision_profit_per_day = decision_profit / total_days
+
+
+
+
+
             rows.append({
                 "vessel_id": v["vessel_id"],
                 "cargo_id": c["cargo_id"],
@@ -683,6 +697,10 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
                 "bunker_cost": bunker_cost,
 
                 "profit_post_bunker": profit_post_bunker,
+                "contribution_usd": contribution_usd,
+                "contribution_usd_per_day": contribution_usd_per_day,
+                "decision_profit": decision_profit,
+                "decision_profit_per_day": decision_profit_per_day,
                 "tce_usd_per_day": tce_usd_per_day,
                 "profit_usd_per_day": profit_usd_per_day
             })
@@ -694,13 +712,6 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
 
     df = pd.DataFrame(rows)
 
-    df = df.sort_values(
-        by="tce_usd_per_day",
-        ascending=False
-    )
-
-    df.to_csv("base_cases.csv", index=False)
-
     # build lookups
     cargo_src = _ALL_CARGOES.set_index("cargo_id")["_src"]
     vessel_name_map = _ALL_VESSELS.set_index("vessel_id")["vessel_name"]
@@ -708,22 +719,26 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
     df["src_cargo"] = df["cargo_id"].map(cargo_src)
     df["vessel_name"] = df["vessel_id"].map(vessel_name_map)
 
-    # filter to cargill cargoes
     df_cargill = df[df["src_cargo"] == "cargill"]
 
-    # pick best per cargo
     best_per_cargo = (
         df_cargill
-        .sort_values("tce_usd_per_day", ascending=False)
+        .sort_values("decision_profit_per_day", ascending=False)
         .groupby("cargo_id", as_index=False)
         .first()
     )
 
+    # save to csv
+    df.to_csv("base_cases.csv", index=False)
+
     # print
     cols = [
         "cargo_id",
-        "vessel_name",
         "vessel_id",
+        "vessel_name",
+        "src_vessel",
+        "decision_profit_per_day",
+        "contribution_usd_per_day",
         "tce_usd_per_day",
         "profit_usd_per_day",
         "hire_rate_usd_per_day",
@@ -732,6 +747,7 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
     ]
 
     print(best_per_cargo[cols].to_string(index=False))
+
 
 
 
