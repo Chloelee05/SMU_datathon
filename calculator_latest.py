@@ -271,6 +271,72 @@ def pick_ffa_route_from_regions(start_region: str, end_region: str) -> str:
 # -----------------------------
 # handling fuel data
 # -----------------------------
+def pick_bunker_location_for_load_port(
+    bunker: pd.DataFrame,
+    load_port: str,
+    *,
+    fallback_location: str = "Singapore",
+    max_hops: int = 6,
+) -> str:
+    """
+    Choose the closest bunker pricing location to load_port.
+    - If load_port itself is a bunker location, use it.
+    - Else, compute shortest path distance (nm) from load_port to each bunker Location
+      using your port graph (get_distance_nm_safe).
+    - If no distances are available to any bunker location, fall back to fallback_location.
+    """
+    lp = canon_port(load_port)
+
+    bunker_locs = (
+        bunker["Location"]
+        .astype(str)
+        .map(_norm_port)
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    # Exact match: if load port is directly a bunker location
+    if _norm_port(lp) in bunker_locs:
+        return lp
+
+    best_loc = None
+    best_dist = float("inf")
+
+    for loc in bunker_locs:
+        d = get_distance_nm_safe(lp, loc, max_hops=max_hops)
+        if d is None:
+            continue
+        if d < best_dist:
+            best_dist = d
+            best_loc = loc
+
+    return best_loc if best_loc is not None else fallback_location
+
+
+def bunker_price_usd_per_mt_by_load_port(
+    bunker: pd.DataFrame,
+    load_port: str,
+    fuel: str,
+    d: date,
+    *,
+    fallback_location: str = "Singapore",
+    max_hops: int = 6,
+) -> tuple[str, float]:
+    """
+    Returns (chosen_location, price_usd_per_mt) where chosen_location is
+    the closest bunker Location to the load_port (or fallback).
+    """
+    loc = pick_bunker_location_for_load_port(
+        bunker,
+        load_port,
+        fallback_location=fallback_location,
+        max_hops=max_hops,
+    )
+    price = bunker_price_usd_per_mt(bunker, loc, fuel, d)
+    return loc, price
+
+
 def bunker_price_usd_per_mt(bunker: pd.DataFrame, location: str, fuel: str, d: date) -> float:
     col = f"{d.strftime('%b')}_{d.strftime('%y')}"  # Feb_26 etc
     row = bunker[(bunker["Location"].str.upper() == location.upper()) & (bunker["Fuel"].str.upper() == fuel.upper())]
@@ -302,20 +368,6 @@ def capacity_feasible_moloo(dwt_mt: float, qty_mt: float, tol_pct: float) -> boo
 
 
 
-def get_distance_nm(port_a: str, port_b: str) -> float | None:
-    """
-    Returns distance in nautical miles, or None if not available.
-    """
-    a = _norm_port(port_a)
-    b = _norm_port(port_b)
-
-    if a == b:
-        return 0.0
-
-    return DISTANCE_NM.get((a, b))
-
-
-
 def get_sailing_days(distance_nm: float, speed_kn: float, SPEED_MULTIPLIER: float) -> float:
     """
     Returns the number of sailing days given distance and speed
@@ -343,7 +395,7 @@ def prune_eta_to_load_port(etd_date: date, laycan_end_date: date, sailing_days: 
 
 
 
-def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: float,LOAD_PORT_DELAY: float, DISCHARGE_PORT_DELAY: float, BUNKER_PORT_COST: float) -> None:
+def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: float,LOAD_PORT_DELAY: float, DISCHARGE_PORT_DELAY: float, VLSF_BUFFER_PCT: float, MGO_BUFFER_PCT: float,BUNKER_PORT_COST: float) -> None:
     # -----------------------------
     # get list of VESSEL_IDS and CARGO_IDS
     # -----------------------------
@@ -390,6 +442,26 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
     prune_1 = 0
     prune_2 = 0
     rows = []
+
+    # validate cargill freight rates (all offending ids)
+    missing_mask = (_ALL_CARGOES["_src"] == "cargill") & (_ALL_CARGOES["freight_rate_usd_per_mt"].isna())
+    if missing_mask.any():
+        bad_ids = _ALL_CARGOES.loc[missing_mask, "cargo_id"].astype(str).dropna().tolist()
+        raise ValueError(f"Missing cargill freight rate for cargo_id={bad_ids}")
+
+    # validate dates (all offending ids)
+    if "etd_date" in _ALL_VESSELS.columns:
+        bad_mask = _ALL_VESSELS["etd_date"].isna()
+        if bad_mask.any():
+            bad_ids = _ALL_VESSELS.loc[bad_mask, "vessel_id"].astype(str).dropna().tolist()
+            raise ValueError(f"Missing vessel etd_date for vessel_id={bad_ids}")
+
+    if "laycan_start_date" in _ALL_CARGOES.columns or "laycan_end_date" in _ALL_CARGOES.columns:
+        cols = [c for c in ["laycan_start_date", "laycan_end_date"] if c in _ALL_CARGOES.columns]
+        bad_mask = _ALL_CARGOES[cols].isna().any(axis=1)
+        if bad_mask.any():
+            bad_ids = _ALL_CARGOES.loc[bad_mask, "cargo_id"].astype(str).dropna().tolist()
+            raise ValueError(f"Missing cargo laycan dates for cargo_id={bad_ids}")
 
 
 
@@ -505,8 +577,7 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
                     freight_rate = (total_hire_cost + port_costs) / loaded_qty_mt
                     inferred = True
                 else:
-                    inferred = False
-                    freight_rate = 0
+                    raise ValueError(f"Missing cargill freight rate for cargo_id={c['cargo_id']}")
             else:
                 freight_rate = float(c["freight_rate_usd_per_mt"])
                 inferred = False
@@ -536,15 +607,44 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
             port_idle_mgo    = total_port_idle_days    * float(v["port_idle_mgo_mt_per_day"])
             port_working_mgo = total_port_working_days * float(v["port_working_mgo_mt_per_day"])
 
-            total_vlsf = ballast_vlsf + laden_vlsf
-            total_mgo  = ballast_mgo + laden_mgo + port_idle_mgo + port_working_mgo
+            total_vlsf = (ballast_vlsf + laden_vlsf) / 100 * (100 + (VLSF_BUFFER_PCT * 100))
+            total_mgo  = (ballast_mgo + laden_mgo + port_idle_mgo + port_working_mgo) / 100 * (100 + (MGO_BUFFER_PCT * 100))
 
-            # price (starter assumption: Singapore)
-            p_vlsf = bunker_price_usd_per_mt(bunker, "Singapore", "VLSFO", eta_load)
-            p_mgo  = bunker_price_usd_per_mt(bunker, "Singapore", "MGO", eta_load)
+            total_vlsf = max(0, total_vlsf - v["rob_vlsf_mt"])
+            total_mgo  = max(0, total_mgo  - v["rob_mgo_mt"])
 
+
+            # fuel price by closest bunker location to load port
+            bunker_loc_vlsf, p_vlsf = bunker_price_usd_per_mt_by_load_port(
+                bunker,
+                c["load_port"],
+                "VLSFO",
+                eta_load,
+                fallback_location="Singapore",
+            )
+
+            bunker_loc_mgo, p_mgo = bunker_price_usd_per_mt_by_load_port(
+                bunker,
+                c["load_port"],
+                "MGO",
+                eta_load,
+                fallback_location="Singapore",
+            )
+
+            bunker_loc = bunker_loc_vlsf
+
+            # calculate bunker cost
             bunker_cost = (total_vlsf * p_vlsf) + (total_mgo * p_mgo) + BUNKER_PORT_COST
+
+            # calculate profit post bunker
             profit_post_bunker = profit_pre_bunker - bunker_cost
+
+            # TCE (implied time charter equivalent, excludes hire)
+            tce_usd_per_day = (net_revenue - port_costs - bunker_cost) / total_days
+
+            # calculate profit per day
+            profit_usd_per_day = profit_post_bunker / total_days
+
 
 
 
@@ -553,16 +653,20 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
                 "cargo_id": c["cargo_id"],
                 "src_vessel": v["_src"],
                 "hire_rate_usd_per_day": hire_rate,
+
                 "ballast_nm": ballast_dist,
                 "laden_nm": laden_dist,
                 "ballast_days": ballast_days,
                 "laden_days": laden_days,
+
                 "eta_load": eta_load,
                 "wait_days": load_port_wait_days,
                 "port_idle_days": total_port_idle_days,
                 "port_work_days": total_port_working_days,
                 "total_days": total_days,
+
                 "loaded_qty_mt": loaded_qty_mt,
+
                 "gross_revenue_usd": gross_revenue,
                 "freight_inferred": inferred,
                 "commission_usd": commission,
@@ -570,10 +674,17 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
                 "port_cost_usd": port_costs,
                 "hire_cost_usd": total_hire_cost,
                 "profit_pre_bunker_usd": profit_pre_bunker,
+
                 "total_vlsf": total_vlsf,
                 "total_mgo": total_mgo,
+                "bunker_location": bunker_loc,
+                "bunker_price_vlsf": p_vlsf,
+                "bunker_price_mgo": p_mgo,
                 "bunker_cost": bunker_cost,
-                "profit_post_bunker": profit_post_bunker
+
+                "profit_post_bunker": profit_post_bunker,
+                "tce_usd_per_day": tce_usd_per_day,
+                "profit_usd_per_day": profit_usd_per_day
             })
     
     print("Missing ballast dist: ", missing_ballast_dist)
@@ -581,7 +692,49 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
     print("Prune 1: ", prune_1)
     print("Prune 2", prune_2)
 
-    pd.DataFrame(rows).to_csv("base_cases.csv", index=False)
+    df = pd.DataFrame(rows)
+
+    df = df.sort_values(
+        by="tce_usd_per_day",
+        ascending=False
+    )
+
+    df.to_csv("base_cases.csv", index=False)
+
+    # build lookups
+    cargo_src = _ALL_CARGOES.set_index("cargo_id")["_src"]
+    vessel_name_map = _ALL_VESSELS.set_index("vessel_id")["vessel_name"]
+
+    df["src_cargo"] = df["cargo_id"].map(cargo_src)
+    df["vessel_name"] = df["vessel_id"].map(vessel_name_map)
+
+    # filter to cargill cargoes
+    df_cargill = df[df["src_cargo"] == "cargill"]
+
+    # pick best per cargo
+    best_per_cargo = (
+        df_cargill
+        .sort_values("tce_usd_per_day", ascending=False)
+        .groupby("cargo_id", as_index=False)
+        .first()
+    )
+
+    # print
+    cols = [
+        "cargo_id",
+        "vessel_name",
+        "vessel_id",
+        "tce_usd_per_day",
+        "profit_usd_per_day",
+        "hire_rate_usd_per_day",
+        "total_days",
+        "bunker_location",
+    ]
+
+    print(best_per_cargo[cols].to_string(index=False))
+
+
+
 
 
 
@@ -594,6 +747,8 @@ if __name__ == "__main__":
     SPEED_MULTIPLIER = 1        # 0 < SPEED_MULTIPLIER < 1  --> for setting in scenario (slow down due to weather, etc)
     LOAD_PORT_DELAY = 0         # > 0                       --> for scenario
     DISCHARGE_PORT_DELAY = 0    # > 0                       --> for scenario
+    VLSF_BUFFER_PCT = 0         # 0 < VLSF_BUFFER < 1       --> for setting buffer in scenario 
+    MGO_BUFFER_PCT = 0          # 0 < MGO_BUFFER < 1       --> for setting buffer in scenario 
     BUNKER_PORT_COST = 5000
 
     PORT_ALIASES = {
@@ -651,7 +806,7 @@ if __name__ == "__main__":
 
 
 
-    calculate(PRUNE, SPEED, DWT_MULTIPLIER, SPEED_MULTIPLIER, LOAD_PORT_DELAY, DISCHARGE_PORT_DELAY, BUNKER_PORT_COST)
+    calculate(PRUNE, SPEED, DWT_MULTIPLIER, SPEED_MULTIPLIER, LOAD_PORT_DELAY, DISCHARGE_PORT_DELAY, VLSF_BUFFER_PCT, MGO_BUFFER_PCT, BUNKER_PORT_COST)
 
 
 

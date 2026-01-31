@@ -66,6 +66,42 @@ def load_data():
         market_vessels["etd_date"], errors="coerce"
     ).dt.date
 
+    def _raise_if_nan_dates(
+        df: pd.DataFrame,
+        cols: list[str],
+        label: str,
+        id_col: str,
+    ) -> None:
+        bad_cols = {}
+        for c in cols:
+            if c in df.columns:
+                n_bad = int(df[c].isna().sum())
+                if n_bad:
+                    bad_cols[c] = n_bad
+        if bad_cols:
+            if id_col in df.columns:
+                bad_ids = (
+                    df.loc[df[cols].isna().any(axis=1), id_col]
+                    .astype(str)
+                    .dropna()
+                    .tolist()
+                )
+            else:
+                bad_ids = []
+            details = ", ".join([f"{k}={v}" for k, v in bad_cols.items()])
+            raise ValueError(f"NaN dates found in {label}: {details}; {id_col}s={bad_ids}")
+
+    _raise_if_nan_dates(cargill_vessels, ["etd_date"], "cargill_vessels", "vessel_id")
+    _raise_if_nan_dates(cargill_cargoes, ["laycan_start_date", "laycan_end_date"], "cargill_cargoes", "cargo_id")
+    _raise_if_nan_dates(market_vessels, ["etd_date"], "market_vessels", "vessel_id")
+    _raise_if_nan_dates(market_cargoes, ["laycan_start_date", "laycan_end_date"], "market_cargoes", "cargo_id")
+
+    if "freight_rate_usd_per_mt" in cargill_cargoes.columns:
+        missing_mask = cargill_cargoes["freight_rate_usd_per_mt"].isna()
+        if missing_mask.any():
+            bad_ids = cargill_cargoes.loc[missing_mask, "cargo_id"].astype(str).dropna().tolist()
+            raise ValueError(f"Missing cargill freight rates for cargo_id={bad_ids}")
+
     # storing FFA report in dataframe
     ffa = pd.DataFrame([
         {"Route": "5TC", "Feb 26": 14157, "Mar 26": 18454, "Q4 25": 24336, "Q1 26": 16746, "Q2 26": 22436,
