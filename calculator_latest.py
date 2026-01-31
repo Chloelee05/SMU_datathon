@@ -616,6 +616,8 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
             port_csv=os.path.join(os.path.dirname(__file__), "port_delay.csv"),
             weather_csv=os.path.join(os.path.dirname(__file__), "weather_delay.csv"),
         )
+    debug_count = 0
+    DEBUG_LIMIT = 5
 
     # validate cargill freight rates (all offending ids)
     missing_mask = (_ALL_CARGOES["_src"] == "cargill") & (_ALL_CARGOES["freight_rate_usd_per_mt"].isna())
@@ -704,6 +706,34 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
             delta = c["laycan_start_date"] - eta_load
             load_port_wait_days = max(0.0, delta.total_seconds() / 86400.0)
 
+            # --- ML predicted delays (per pair) ---
+            ml_port_delay_days = np.nan
+            ml_load_port_delay_days = np.nan
+            ml_discharge_port_delay_days = np.nan
+            ml_weather_factor = np.nan
+            if rm is not None:
+                try:
+                    out = rm.predict(
+                        {
+                            "from_port": c["load_port"],
+                            "to_port": c["discharge_port"],
+                            "month": int(getattr(eta_load, "month", 1)),
+                            "distance_nm": float(laden_dist),
+                        }
+                    )
+                    ml_pred = out.get("prediction", {})
+                    ml_port_delay_days = ml_pred.get("port_delay_days", np.nan)
+                    ml_load_port_delay_days = ml_pred.get("load_port_delay_days", np.nan)
+                    ml_discharge_port_delay_days = ml_pred.get("discharge_port_delay_days", np.nan)
+                    ml_weather_factor = ml_pred.get("weather_factor", np.nan)
+                except Exception:
+                    pass
+
+            ml_load_delay = float(ml_load_port_delay_days) if pd.notna(ml_load_port_delay_days) else 0.0
+            ml_discharge_delay = float(ml_discharge_port_delay_days) if pd.notna(ml_discharge_port_delay_days) else 0.0
+            # optional: clamp (avoid crazy values)
+            ml_load_delay = max(0.0, min(10.0, ml_load_delay))
+            ml_discharge_delay = max(0.0, min(10.0, ml_discharge_delay))
 
             # calculate loading and discharge times
             load_rate = float(c["load_rate_mt_per_day"])
@@ -723,7 +753,17 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
                 + (c["discharge_turn_time_hr"] / 24)
                 + float(LOAD_PORT_DELAY)
                 + float(DISCHARGE_PORT_DELAY)
+                + ml_load_delay
+                + ml_discharge_delay
             )
+            if debug_count < DEBUG_LIMIT:
+                print(
+                    f"[ML-DEBUG] vessel={v['vessel_id']} cargo={c['cargo_id']} "
+                    f"base_load={float(LOAD_PORT_DELAY):.2f} base_dis={float(DISCHARGE_PORT_DELAY):.2f} "
+                    f"ml_load={ml_load_delay:.2f} ml_dis={ml_discharge_delay:.2f} "
+                    f"idle_days={total_port_idle_days:.2f}"
+                )
+                debug_count += 1
 
             # calculate total port working days
             total_port_working_days = load_days + discharge_days
@@ -835,28 +875,6 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
 
 
 
-
-            ml_port_delay_days = np.nan
-            ml_load_port_delay_days = np.nan
-            ml_discharge_port_delay_days = np.nan
-            ml_weather_factor = np.nan
-            if rm is not None:
-                try:
-                    out = rm.predict(
-                        {
-                            "from_port": c["load_port"],
-                            "to_port": c["discharge_port"],
-                            "month": int(getattr(eta_load, "month", 1)),
-                            "distance_nm": float(laden_dist),
-                        }
-                    )
-                    ml_pred = out.get("prediction", {})
-                    ml_port_delay_days = ml_pred.get("port_delay_days", np.nan)
-                    ml_load_port_delay_days = ml_pred.get("load_port_delay_days", np.nan)
-                    ml_discharge_port_delay_days = ml_pred.get("discharge_port_delay_days", np.nan)
-                    ml_weather_factor = ml_pred.get("weather_factor", np.nan)
-                except Exception:
-                    pass
 
             rows.append({
                 "vessel_id": v["vessel_id"],
@@ -1007,7 +1025,7 @@ if __name__ == "__main__":
     DWT_MULTIPLIER = 1          # 0 < DWT_MULTIPLIER < 1    --> for setting buffer in scenario
     SPEED_MULTIPLIER = 1        # 0 < SPEED_MULTIPLIER < 1  --> for setting in scenario (slow down due to weather, etc)
     LOAD_PORT_DELAY = 0         # > 0                       --> for scenario
-    DISCHARGE_PORT_DELAY = 0    # > 0                       --> for scenario
+    DISCHARGE_PORT_DELAY = 0   # > 0                       --> for scenario
     VLSF_BUFFER_PCT = 0         # 0 < VLSF_BUFFER < 1       --> for setting buffer in scenario 
     MGO_BUFFER_PCT = 0          # 0 < MGO_BUFFER < 1       --> for setting buffer in scenario 
     BUNKER_PORT_COST = 5000
@@ -1068,7 +1086,5 @@ if __name__ == "__main__":
 
 
     calculate(PRUNE, SPEED, DWT_MULTIPLIER, SPEED_MULTIPLIER, LOAD_PORT_DELAY, DISCHARGE_PORT_DELAY, VLSF_BUFFER_PCT, MGO_BUFFER_PCT, BUNKER_PORT_COST)
-
-
 
 
