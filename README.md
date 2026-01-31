@@ -1,6 +1,6 @@
-# SMU DATATHON
+# SMU Cargill Datathon 2026
 
-A modern, clean ChatGPT-style chatbot interface built with **Python Streamlit**.
+A modern, clean ChatGPT-style chatbot interface built with **Python Streamlit** for SMU Cargill Datathon 2026.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
