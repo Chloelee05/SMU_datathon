@@ -6,6 +6,10 @@ A modern, clean ChatGPT-style chatbot interface built with **Python Streamlit** 
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
+## Features
+- AI Agents built with Langchain and Langgraph, with tool calling for querying / calculations
+
+
 ## Screenshots
 
 
