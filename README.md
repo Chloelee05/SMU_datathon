@@ -1,66 +1,152 @@
-# SMU Cargill Datathon 2026
+# 🚢 SMU Cargill Datathon 2026 – Multi-Agent Chatbot UI
 
-A modern, clean ChatGPT-style chatbot interface built with **Python Streamlit** for SMU Cargill Datathon 2026.
+A modern **ChatGPT-style chatbot interface** built with **Streamlit**, powered by **LangChain + LangGraph multi-agent architecture**, developed for **SMU Cargill Datathon 2026**.
 
-![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
+The system integrates multiple specialised AI agents (optimisation, math, supervision) with tool-calling to support **querying, reasoning, and calculations** in a clean web UI.
 
-## Features
-- AI Agents built with Langchain and Langgraph, with tool calling for querying / calculations
+---
 
+## 🧠 Key Features
 
-## Screenshots
+- 💬 ChatGPT-style UI built with Streamlit  
+- 🤖 Multi-agent system using LangChain + LangGraph  
+- 🧮 Tool-calling agents for:
+  - Mathematical reasoning  
+  - Optimisation logic  
+  - Supervised task routing  
+- 🔁 Persistent chat state across interactions  
+- 🔐 Secure API key handling via environment variables or Streamlit secrets  
+- ⚡ Cached agent graph for fast responses  
 
+---
 
-## Installation
+## 📸 Screenshots
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/Chloelee05/SMU_datathon/
-cd chatgpt-clone-ui
+*(Add screenshots here once final UI is ready)*
+
+```text
+screenshots/
+├── chat_ui.png
+├── agent_response.png
+└── tool_call_trace.png
 ```
 
-2. **Install dependencies**
+---
+
+## 🛠️ Tech Stack
+
+- **Python 3.8+**
+- **Streamlit** – frontend & app server
+- **LangChain** – LLM orchestration
+- **LangGraph** – multi-agent control flow
+- **OpenAI API** – LLM backend
+
+---
+
+## 📦 Installation
+
+### 1️⃣ Clone the repository
+```bash
+git clone https://github.com/Chloelee05/SMU_datathon.git
+cd SMU_datathon
+```
+
+### 2️⃣ Create and activate a virtual environment (recommended)
+
+**Windows (PowerShell)**
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate
+```
+
+**macOS / Linux**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3️⃣ Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Set OPENAI_API_KEY**
-```bash
-set in powershell
+---
+
+## 🔑 Setting the OpenAI API Key
+###  Environment Variable (PowerShell)
+
+```powershell
+$env:OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxx"
 ```
 
-4. **Run the application**
+Verify:
+```powershell
+echo $env:OPENAI_API_KEY
+```
+
+---
+
+## ▶️ Running the Application
+
+From the project root:
+
 ```bash
 streamlit run app.py
 ```
 
-5. **Open in browser**
+Then open:
 ```
 http://localhost:8501
 ```
 
-## Project Structure
+---
 
+## 🗂️ Project Structure
+
+```text
+├── app.py                   # Main Streamlit application
+├── supervisor_agent.py      # Supervisor / router agent
+├── optimiser_agent.py       # Optimisation agent
+├── math_agent.py            # Math & calculation agent
+├── z_data_in.py             # Data loading / preprocessing
+├── z_calculator_latest.py   # Domain-specific calculators
+├── requirements.txt         # Python dependencies
+└── README.md                # Project documentation
 ```
-├── app.py              # Main Streamlit application
-├── requirements.txt    # Python dependencies
-└── README.md          # Project documentation
-```
 
+---
 
-## Requirements
+## ⚙️ How It Works (High-Level)
 
-- Python 3.8 or higher
-- Streamlit 1.28.0 or higher
+1. User enters a query in the Streamlit chat UI  
+2. Input is passed to a **LangGraph supervisor agent**  
+3. Supervisor routes the task to:
+   - Math agent  
+   - Optimiser agent  
+   - Or other tools  
+4. Agents call tools when needed  
+5. Final response is returned to the UI  
 
+---
 
-## License
+## 🧪 Development Notes
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- Agents are initialised lazily to avoid API key issues  
+- LangGraph is cached using `st.cache_resource`  
+- Streamlit reruns are handled safely with session state  
 
-## Acknowledgments
+---
 
-- Inspired by [OpenAI ChatGPT](https://chat.openai.com)
-- Built with [Streamlit](https://streamlit.io)
+## 📝 License
+
+This project is licensed under the **MIT License**.  
+See the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgements
+
+- **Cargill & SMU** – Datathon 2026  
+- **OpenAI** – Large Language Models  
+- **LangChain / LangGraph** – Agent orchestration  
+- **Streamlit** – UI framework  
