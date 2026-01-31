@@ -182,6 +182,151 @@ def check_cargo_exists(cargo_id: str) -> bool:
 
 
 @tool
+def list_cargill_vessels() -> dict:
+    """
+    List all Cargill vessels (cv_*).
+    Output:
+      {
+        "ok": bool,
+        "vessels": [{"vessel_id": str, "vessel_name": str}],
+        "count": int
+      }
+    """
+    df = _ALL_VESSELS[_ALL_VESSELS["_src"] == "cargill"]
+
+    vessels = [
+        {
+            "vessel_id": row["vessel_id"],
+            "vessel_name": row["vessel_name"],
+        }
+        for _, row in df.iterrows()
+    ]
+
+    return {
+        "ok": True,
+        "vessels": vessels,
+        "count": len(vessels),
+    }
+
+
+@tool
+def list_cargill_cargoes(include_summary: bool = True, limit: int = 50) -> dict:
+    """
+    List Cargill cargoes.
+    If include_summary=True, includes route + laycan for context (no economics).
+    """
+    df = _ALL_CARGOES[_ALL_CARGOES["_src"] == "cargill"].copy()
+
+    try:
+        lim = int(limit)
+    except Exception:
+        lim = 50
+    lim = max(1, min(200, lim))
+
+    rows = []
+    for _, row in df.head(lim).iterrows():
+        item = {"cargo_id": row.get("cargo_id")}
+
+        if include_summary:
+            load_port = row.get("load_port")
+            dis_port = row.get("discharge_port")
+
+            item["route"] = f"{load_port} → {dis_port}"
+            item["laycan_start_date"] = row.get("laycan_start_date")
+            item["laycan_end_date"] = row.get("laycan_end_date")
+
+            # ✅ PUT THIS LINE HERE
+            item["label"] = (
+                f"{item['cargo_id']} | "
+                f"{load_port} → {dis_port} | "
+                f"{item['laycan_start_date']}-{item['laycan_end_date']}"
+            )
+
+        rows.append(item)
+
+    return {
+        "ok": True,
+        "cargoes": rows,
+        "count": int(len(df)),
+        "returned": len(rows),
+    }
+
+
+
+@tool
+def list_market_vessels() -> dict:
+    """
+    List all Market vessels (mv_*).
+
+    Output:
+      {
+        "ok": bool,
+        "vessels": [{"vessel_id": str, "vessel_name": str}],
+        "count": int
+      }
+    """
+    df = _ALL_VESSELS[_ALL_VESSELS["_src"] == "market"]
+
+    vessels = [
+        {
+            "vessel_id": row["vessel_id"],
+            "vessel_name": row["vessel_name"],
+        }
+        for _, row in df.iterrows()
+    ]
+
+    return {
+        "ok": True,
+        "vessels": vessels,
+        "count": len(vessels),
+    }
+
+
+@tool
+def list_market_cargoes(include_summary: bool = True, limit: int = 50) -> dict:
+    """
+    List Market cargoes.
+    If include_summary=True, includes route + laycan for context (no economics).
+    """
+    df = _ALL_CARGOES[_ALL_CARGOES["_src"] == "market"].copy()
+
+    try:
+        lim = int(limit)
+    except Exception:
+        lim = 50
+    lim = max(1, min(200, lim))
+
+    rows = []
+    for _, row in df.head(lim).iterrows():
+        item = {"cargo_id": row.get("cargo_id")}
+
+        if include_summary:
+            load_port = row.get("load_port")
+            dis_port = row.get("discharge_port")
+
+            item["route"] = f"{load_port} → {dis_port}"
+            item["laycan_start_date"] = row.get("laycan_start_date")
+            item["laycan_end_date"] = row.get("laycan_end_date")
+
+            # ✅ PUT THIS LINE HERE
+            item["label"] = (
+                f"{item['cargo_id']} | "
+                f"{load_port} → {dis_port} | "
+                f"{item['laycan_start_date']}-{item['laycan_end_date']}"
+            )
+
+        rows.append(item)
+
+    return {
+        "ok": True,
+        "cargoes": rows,
+        "count": int(len(df)),
+        "returned": len(rows),
+    }
+
+
+
+@tool
 def suggest_ports(query: str, k: int = 5) -> dict:
     """
     Suggest closest known port names from the distance table.
@@ -432,6 +577,13 @@ def calculate_port_working_days(cargo_qty_mt: float, working_rate_mt_per_day: fl
 tools = [
     check_vessel_exists,
     check_cargo_exists,
+
+    # listing tools
+    list_cargill_vessels,
+    list_market_vessels,
+    list_cargill_cargoes,
+    list_market_cargoes,
+
     suggest_ports,
     get_distance_nm,
     get_speed_kn,
@@ -448,16 +600,40 @@ math_model = ChatOpenAI(model="gpt-4o").bind_tools(tools)
 
 def math_agent(state: AgentState) -> AgentState:
     system_prompt = SystemMessage(
-        content="\n".join(
+    content="\n".join(
             [
                 "You are a dry bulk trader at Cargill Ocean Transportation Singapore, managing a fleet of Capesize vessels (large bulk carriers).",
                 "You move bulk cargoes such as iron ore and bauxite across global trade routes for customers.",
+
                 "You MUST use the provided tools for calculations and lookups from the CSV data (vessels, cargoes, port distances, etc.).",
+
                 "When inputs are missing (e.g., vessel_load or speed_type), ask the user—do not assume.",
-                "When a distance tool returns ok=True and method != 'direct', explicitly mention route_ports and assumptions in the reply.",
+                "When a distance tool returns ok=True and method != 'direct', explicitly mention the route_ports and any assumptions used.",
+                "When the user asks to list vessels or cargoes, use the appropriate listing tool (Cargill vs Market).",
+
+                "If a tool returns None OR returns a dict with ok=False, treat it as missing/unknown data and ask for the minimal missing info or explain the data gap.",
+                "If suggest_ports returns an empty suggestions list, ask the user to provide an alternative spelling or a different port name.",
+
+
+                # Vessels
+                "Cargill vessels have vessel_id starting with 'cv_' and are company-owned/controlled vessels.",
+                "Market vessels have vessel_id starting with 'mv_' and are spot/market vessels.",
+                "When reasoning about vessels, always distinguish Cargill vs Market vessels using vessel_id prefix.",
+                "If a vessel is a Market vessel (mv_*), assume it is chartered from the market unless stated otherwise.",
+
+                # Cargoes
+                "Cargill cargoes have cargo_id starting with 'cc_' and are contract/committed cargoes.",
+                "Market cargoes have cargo_id starting with 'mc_' and are spot/market cargoes.",
+                "When reasoning about cargoes, always distinguish Cargill vs Market cargoes using cargo_id prefix.",
+                "If a cargo is a Market cargo (mc_*), treat it as optional/spot cargo unless stated otherwise.",
+
+                # Safety rule
+                "Never assume whether a vessel or cargo is Cargill or Market unless the corresponding ID (vessel_id or cargo_id) is known.",
+
             ]
         )
     )
+
 
     response = math_model.invoke([system_prompt] + state["messages"])
     return {"messages": [response]}

@@ -4,14 +4,67 @@ import pandas as pd
 
 def load_data():
     try:
-        cargill_vessels = pd.read_csv("data/_cargill_capsize_vessels.csv")
-        cargill_cargoes = pd.read_csv("data/_cargill_committed_cargoes.csv")
-        market_vessels = pd.read_csv("data/_market_vessels.csv")
-        market_cargoes = pd.read_csv("data/_market_cargoes.csv")
-        port_distances = pd.read_csv("data/_port_distances.csv")
-    except FileNotFoundError as e:
-        print("File not found:", e)
+        cargill_vessels = pd.read_csv(
+            "data/_cargill_capsize_vessels.csv",
+            parse_dates=["etd_date"],
+            dayfirst=True,
+        )
 
+        cargill_cargoes = pd.read_csv(
+            "data/_cargill_committed_cargoes.csv",
+            parse_dates=["laycan_start_date", "laycan_end_date"],
+            dayfirst=True,
+        )
+
+        market_vessels = pd.read_csv(
+            "data/_market_vessels.csv",
+            parse_dates=["etd_date"],
+            dayfirst=True,
+        )
+
+        market_cargoes = pd.read_csv(
+            "data/_market_cargoes.csv",
+            parse_dates=["laycan_start_date", "laycan_end_date"],
+            dayfirst=True,
+        )
+        port_distances = pd.read_csv(
+            "data/_port_distances.csv"
+        )
+
+
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"File not found: {e.filename}") from e
+
+
+    # Normalize dates
+    # strip column names (important!)
+    for df in (cargill_vessels, cargill_cargoes, market_vessels, market_cargoes):
+        df.columns = df.columns.str.strip()
+
+    # force datetime conversion (safe even if already datetime)
+    cargill_cargoes["laycan_start_date"] = pd.to_datetime(
+        cargill_cargoes["laycan_start_date"], errors="coerce"
+    ).dt.date
+
+    cargill_cargoes["laycan_end_date"] = pd.to_datetime(
+        cargill_cargoes["laycan_end_date"], errors="coerce"
+    ).dt.date
+
+    market_cargoes["laycan_start_date"] = pd.to_datetime(
+        market_cargoes["laycan_start_date"], errors="coerce"
+    ).dt.date
+
+    market_cargoes["laycan_end_date"] = pd.to_datetime(
+        market_cargoes["laycan_end_date"], errors="coerce"
+    ).dt.date
+
+    cargill_vessels["etd_date"] = pd.to_datetime(
+        cargill_vessels["etd_date"], errors="coerce"
+    ).dt.date
+
+    market_vessels["etd_date"] = pd.to_datetime(
+        market_vessels["etd_date"], errors="coerce"
+    ).dt.date
 
     # storing FFA report in dataframe
     ffa = pd.DataFrame([
@@ -28,8 +81,7 @@ def load_data():
         "Cal 28": 11540, "Cal 29": 11000, "Cal 30": 10900}
     ])
 
-    ffa.columns = ffa.columns.str.replace(" ", "_")
-
+    ffa.columns = ffa.columns.str.replace(" ", "_", regex=False)
 
     # storing bunker forward curve in dataframe
     bunker = pd.DataFrame([
@@ -92,15 +144,6 @@ if __name__ == "__main__":
     print(bunker)
 
     print("=" * 60)
-    cv = cargill_vessels["vessel_name"]
-    mv = market_vessels["vessel_name"]
-
-    combined_vessels = pd.concat(
-        [cv, mv]
-        , ignore_index=True
-    ).dropna().drop_duplicates()
-
-    print(combined_vessels)
 
 
 
