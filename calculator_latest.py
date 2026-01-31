@@ -1,5 +1,7 @@
 from typing import TypedDict
 from datetime import date, timedelta
+import os
+import sys
 
 import z_data_in
 import pandas as pd
@@ -12,6 +14,14 @@ except Exception:  # pragma: no cover
     linear_sum_assignment = None
 import heapq
 import difflib
+
+ML_DIR = os.path.join(os.path.dirname(__file__), "SMU_datathon-Moe")
+if os.path.isdir(ML_DIR) and ML_DIR not in sys.path:
+    sys.path.append(ML_DIR)
+try:
+    from ml import RiskModel  # type: ignore
+except Exception:  # pragma: no cover
+    RiskModel = None
 
 
 
@@ -411,6 +421,7 @@ def solve_fleet_assignment(
     must_deliver_src: str = "cargill",
     value_col: str = "decision_profit",
 ) -> pd.DataFrame:
+    
     """
     Global assignment:
       - each vessel can take at most 1 cargo
@@ -599,6 +610,12 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
     prune_1 = 0
     prune_2 = 0
     rows = []
+    rm = None
+    if RiskModel is not None:
+        rm = RiskModel(
+            port_csv=os.path.join(os.path.dirname(__file__), "port_delay.csv"),
+            weather_csv=os.path.join(os.path.dirname(__file__), "weather_delay.csv"),
+        )
 
     # validate cargill freight rates (all offending ids)
     missing_mask = (_ALL_CARGOES["_src"] == "cargill") & (_ALL_CARGOES["freight_rate_usd_per_mt"].isna())
@@ -819,6 +836,28 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
 
 
 
+            ml_port_delay_days = np.nan
+            ml_load_port_delay_days = np.nan
+            ml_discharge_port_delay_days = np.nan
+            ml_weather_factor = np.nan
+            if rm is not None:
+                try:
+                    out = rm.predict(
+                        {
+                            "from_port": c["load_port"],
+                            "to_port": c["discharge_port"],
+                            "month": int(getattr(eta_load, "month", 1)),
+                            "distance_nm": float(laden_dist),
+                        }
+                    )
+                    ml_pred = out.get("prediction", {})
+                    ml_port_delay_days = ml_pred.get("port_delay_days", np.nan)
+                    ml_load_port_delay_days = ml_pred.get("load_port_delay_days", np.nan)
+                    ml_discharge_port_delay_days = ml_pred.get("discharge_port_delay_days", np.nan)
+                    ml_weather_factor = ml_pred.get("weather_factor", np.nan)
+                except Exception:
+                    pass
+
             rows.append({
                 "vessel_id": v["vessel_id"],
                 "cargo_id": c["cargo_id"],
@@ -859,7 +898,11 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
                 "decision_profit": decision_profit,
                 "decision_profit_per_day": decision_profit_per_day,
                 "tce_usd_per_day": tce_usd_per_day,
-                "profit_usd_per_day": profit_usd_per_day
+                "profit_usd_per_day": profit_usd_per_day,
+                "ml_port_delay_days": ml_port_delay_days,
+                "ml_load_port_delay_days": ml_load_port_delay_days,
+                "ml_discharge_port_delay_days": ml_discharge_port_delay_days,
+                "ml_weather_factor": ml_weather_factor,
             })
     
     print("Missing ballast dist: ", missing_ballast_dist)
@@ -897,6 +940,26 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
 
     # Save fleet plan
     chosen.to_csv("fleet_assignment.csv", index=False)
+
+    # Debug: print all assigned pairs sorted by assigned_value (desc)
+    """print("\n" + "=" * 80)
+    print("ALL ASSIGNED PAIRS (sorted by assigned_value)")
+    print("=" * 80)
+    all_cols = [
+        "cargo_id",
+        "vessel_id",
+        "vessel_name",
+        "src_vessel",
+        "src_cargo",
+        "assigned_value",
+        "decision_profit_per_day",
+        "contribution_usd_per_day",
+        "profit_usd_per_day",
+        "tce_usd_per_day",
+        "total_days",
+        "bunker_location",
+    ]
+    print(chosen.sort_values("assigned_value", ascending=False)[all_cols].to_string(index=False))"""
 
     # Print the must-deliver plan (Cargill cargos)
     chosen_cargill = chosen[chosen["src_cargo"] == "cargill"].copy()
@@ -1004,8 +1067,6 @@ if __name__ == "__main__":
 
 
     calculate(PRUNE, SPEED, DWT_MULTIPLIER, SPEED_MULTIPLIER, LOAD_PORT_DELAY, DISCHARGE_PORT_DELAY, VLSF_BUFFER_PCT, MGO_BUFFER_PCT, BUNKER_PORT_COST)
-
-
 
 
 
