@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 4. **Set OPENAI_API_KEY**
 ```bash
-pip install -r requirements.txt
+set in powershell
 ```
 
 4. **Run the application**
