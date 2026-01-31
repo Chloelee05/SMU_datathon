@@ -4,6 +4,12 @@ from datetime import date, timedelta
 import z_data_in
 import pandas as pd
 import numpy as np
+
+# Optional: used for optimal assignment (Hungarian). Falls back to greedy if unavailable.
+try:
+    from scipy.optimize import linear_sum_assignment  # type: ignore
+except Exception:  # pragma: no cover
+    linear_sum_assignment = None
 import heapq
 import difflib
 
@@ -395,6 +401,157 @@ def prune_eta_to_load_port(etd_date: date, laycan_end_date: date, sailing_days: 
 
 
 
+
+# -----------------------------
+# fleet assignment (one vessel -> one cargo)
+# -----------------------------
+def solve_fleet_assignment(
+    df_pairs: pd.DataFrame,
+    *,
+    must_deliver_src: str = "cargill",
+    value_col: str = "decision_profit",
+) -> pd.DataFrame:
+    """
+    Global assignment:
+      - each vessel can take at most 1 cargo
+      - each cargo can be taken by at most 1 vessel
+      - all cargos with src_cargo==must_deliver_src must be assigned (delivered)
+      - other cargos are optional (may remain unserved)
+
+    Objective:
+      - maximize df_pairs[value_col] for chosen (vessel_id, cargo_id) edges.
+
+    Notes:
+      - value_col should already reflect opportunity cost logic:
+          * Cargill vessel: contribution_usd
+          * Market vessel: profit_post_bunker
+      - Uses Hungarian algorithm if SciPy is available; otherwise falls back to greedy.
+
+    Returns a DataFrame of chosen assignments for REAL vessels only:
+      vessel_id, cargo_id, assigned_value
+    """
+    required = {"vessel_id", "cargo_id", "src_cargo", value_col}
+    missing = required - set(df_pairs.columns)
+    if missing:
+        raise ValueError(f"df_pairs missing columns: {missing}")
+
+    df_pairs = df_pairs.copy()
+    df_pairs["vessel_id"] = df_pairs["vessel_id"].astype(str)
+    df_pairs["cargo_id"] = df_pairs["cargo_id"].astype(str)
+    df_pairs["src_cargo"] = df_pairs["src_cargo"].astype(str)
+
+    vessels = df_pairs["vessel_id"].unique().tolist()
+    cargos_all = df_pairs["cargo_id"].unique().tolist()
+    cargos_must = df_pairs.loc[df_pairs["src_cargo"] == must_deliver_src, "cargo_id"].unique().tolist()
+    cargos_optional = [c for c in cargos_all if c not in set(cargos_must)]
+
+    if len(vessels) < len(cargos_must):
+        raise ValueError(
+            f"Not enough vessels to cover must-deliver cargos: vessels={len(vessels)} < must_deliver={len(cargos_must)}"
+        )
+
+    # Use maximum value if duplicates exist for a pair
+    pair_value = df_pairs.groupby(["vessel_id", "cargo_id"])[value_col].max()
+
+    # If SciPy is available, solve optimally with Hungarian algorithm.
+    if linear_sum_assignment is not None:
+        # We force every cargo to be 'covered' by either a real vessel or a dummy vessel.
+        cargos = cargos_must + cargos_optional
+        nV = len(vessels)
+        nC = len(cargos)
+
+        # dummy vessels allow leaving OPTIONAL cargos unserved (value 0); MUST cargos cannot go to dummy
+        dummy_vessels = [f"__DUMMY_VESSEL_{i}__" for i in range(nC)]
+        vessels_rows = vessels + dummy_vessels
+        nRows = len(vessels_rows)
+
+        # idle columns allow any vessel to be unused
+        idle_cols = [f"__IDLE_{i}__" for i in range(nRows)]
+        cols = cargos + idle_cols
+        nCols = len(cols)
+
+        big_m = 1e12
+        cost = np.full((nRows, nCols), big_m, dtype=float)
+        cargo_idx = {c: j for j, c in enumerate(cargos)}
+        idle_start = len(cargos)
+
+        # real vessels
+        for i, v in enumerate(vessels):
+            # idle at 0 cost
+            cost[i, idle_start:] = 0.0
+            # cargo edges
+            for c in cargos:
+                if (v, c) in pair_value.index:
+                    val = float(pair_value.loc[(v, c)])
+                    cost[i, cargo_idx[c]] = -val
+
+        # dummy vessels
+        for di, dv in enumerate(dummy_vessels, start=nV):
+            # idle slightly worse than taking optional cargo
+            cost[di, idle_start:] = 1.0
+            for c in cargos_optional:
+                cost[di, cargo_idx[c]] = 0.0
+
+        row_ind, col_ind = linear_sum_assignment(cost)
+        assignments = []
+        for r, cidx in zip(row_ind, col_ind):
+            v = vessels_rows[r]
+            col = cols[cidx]
+            if v.startswith("__DUMMY_VESSEL_"):
+                continue
+            if col.startswith("__IDLE_"):
+                continue
+            assignments.append((v, col, -cost[r, cidx]))
+
+        out = pd.DataFrame(assignments, columns=["vessel_id", "cargo_id", "assigned_value"])
+
+        # ensure all must cargos assigned to real vessels
+        if set(cargos_must) - set(out["cargo_id"].tolist()):
+            missing_must = sorted(set(cargos_must) - set(out["cargo_id"].tolist()))
+            raise RuntimeError(f"Assignment infeasible: missing must-deliver cargos: {missing_must}")
+
+        return out
+
+    # Fallback: greedy (not optimal, but respects constraints)
+    # 1) cover must cargos first by highest value
+    used_vessels = set()
+    used_cargos = set()
+    chosen = []
+
+    # helper to pick best remaining edge for a given cargo
+    def best_edge_for_cargo(cargo_id: str):
+        candidates = df_pairs[df_pairs["cargo_id"] == cargo_id]
+        candidates = candidates[~candidates["vessel_id"].isin(used_vessels)]
+        if candidates.empty:
+            return None
+        row = candidates.sort_values(value_col, ascending=False).iloc[0]
+        return row["vessel_id"], row["cargo_id"], float(row[value_col])
+
+    for c in cargos_must:
+        edge = best_edge_for_cargo(c)
+        if edge is None:
+            raise RuntimeError(f"Greedy assignment failed: no vessel available for must cargo {c}")
+        v, cid, val = edge
+        used_vessels.add(v)
+        used_cargos.add(cid)
+        chosen.append((v, cid, val))
+
+    # 2) optionally assign remaining vessels to remaining cargos by descending value
+    remaining = df_pairs[~df_pairs["vessel_id"].isin(used_vessels)]
+    remaining = remaining[~remaining["cargo_id"].isin(used_cargos)]
+    remaining = remaining.sort_values(value_col, ascending=False)
+    for _, row in remaining.iterrows():
+        v = row["vessel_id"]
+        c = row["cargo_id"]
+        if v in used_vessels or c in used_cargos:
+            continue
+        used_vessels.add(v)
+        used_cargos.add(c)
+        chosen.append((v, c, float(row[value_col])))
+
+    return pd.DataFrame(chosen, columns=["vessel_id", "cargo_id", "assigned_value"])
+
+
 def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: float,LOAD_PORT_DELAY: float, DISCHARGE_PORT_DELAY: float, VLSF_BUFFER_PCT: float, MGO_BUFFER_PCT: float,BUNKER_PORT_COST: float) -> None:
     # -----------------------------
     # get list of VESSEL_IDS and CARGO_IDS
@@ -710,46 +867,70 @@ def calculate(PRUNE: bool, SPEED: str, DWT_MULTIPLIER: float, SPEED_MULTIPLIER: 
     print("Prune 1: ", prune_1)
     print("Prune 2", prune_2)
 
+    
     df = pd.DataFrame(rows)
 
-    # build lookups
+    # build lookups (needed for assignment / printing)
     cargo_src = _ALL_CARGOES.set_index("cargo_id")["_src"]
     vessel_name_map = _ALL_VESSELS.set_index("vessel_id")["vessel_name"]
 
     df["src_cargo"] = df["cargo_id"].map(cargo_src)
     df["vessel_name"] = df["vessel_id"].map(vessel_name_map)
 
-    df_cargill = df[df["src_cargo"] == "cargill"]
-
-    best_per_cargo = (
-        df_cargill
-        .sort_values("decision_profit_per_day", ascending=False)
-        .groupby("cargo_id", as_index=False)
-        .first()
-    )
-
-    # save to csv
+    # Save all pairwise results
     df.to_csv("base_cases.csv", index=False)
 
-    # print
+    # -----------------------------
+    # Global assignment:
+    #   - one vessel -> one cargo
+    #   - all Cargill cargos must be delivered
+    #   - market cargos optional
+    # -----------------------------
+    assign = solve_fleet_assignment(
+        df,
+        must_deliver_src="cargill",
+        value_col="decision_profit",   # USD objective with opportunity-cost handling
+    )
+
+    # Join assignment back to the chosen pair rows for reporting
+    chosen = df.merge(assign, on=["vessel_id", "cargo_id"], how="inner")
+
+    # Save fleet plan
+    chosen.to_csv("fleet_assignment.csv", index=False)
+
+    # Print the must-deliver plan (Cargill cargos)
+    chosen_cargill = chosen[chosen["src_cargo"] == "cargill"].copy()
+    chosen_cargill = chosen_cargill.sort_values("assigned_value", ascending=False)
+
     cols = [
         "cargo_id",
         "vessel_id",
         "vessel_name",
         "src_vessel",
+        "assigned_value",
         "decision_profit_per_day",
         "contribution_usd_per_day",
-        "tce_usd_per_day",
         "profit_usd_per_day",
-        "hire_rate_usd_per_day",
+        "tce_usd_per_day",
         "total_days",
         "bunker_location",
     ]
 
-    print(best_per_cargo[cols].to_string(index=False))
+    print(chosen_cargill[cols].to_string(index=False))
 
+    # Print the optional plan (market cargos that were taken)
+    chosen_market = chosen[chosen["src_cargo"] == "market"].copy()
+    chosen_market = chosen_market.sort_values("assigned_value", ascending=False)
 
-
+    if not chosen_market.empty:
+        print("\n" + "=" * 80)
+        print("MARKET CARGOS TAKEN (optional)")
+        print("=" * 80)
+        print(chosen_market[cols].to_string(index=False))
+    else:
+        print("\n" + "=" * 80)
+        print("MARKET CARGOS TAKEN (optional): none")
+        print("=" * 80)
 
 
 
