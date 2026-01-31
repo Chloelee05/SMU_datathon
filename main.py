@@ -24,7 +24,7 @@ def route_from_state(state: AgentState) -> str:
     return state.get("route", "math_agent")
 
 
-def run():
+def build_langgraph_app():
     graph = StateGraph(AgentState)
 
     graph.add_node("supervisor", supervisor_agent)
@@ -58,7 +58,11 @@ def run():
     )
     graph.add_edge("optimiser_tools", "optimiser_agent")
 
-    app = graph.compile()
+    return graph.compile()
+
+
+def run():
+    app = build_langgraph_app()
 
     state = {"messages": [], "route": "math_agent"}
     while True:
