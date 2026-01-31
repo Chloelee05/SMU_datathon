@@ -6,34 +6,14 @@ A modern, clean ChatGPT-style chatbot interface built with **Python Streamlit**.
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-## Features
-
-- **Clean & Modern UI** - Minimalist design inspired by ChatGPT
-- **Chat History** - View and manage previous conversations
-- **Delete Chats** - Remove unwanted conversations with one click
-- **User Profile Modal** - Beautiful profile popup with stats
-- **Settings Panel** - Customize notifications, auto-save, and privacy
-- **Theme Selector** - Choose between Light/Dark/System themes
-- **Usage Statistics** - Track your message count and token usage
-- **Help Center** - Built-in FAQ section
-- **Responsive Design** - Works on various screen sizes
-
 ## Screenshots
 
-### Main Chat Interface
-- Clean welcome screen with "What can I help with?" prompt
-- Sidebar with chat history and user profile
-
-### Profile Modal
-- User avatar and information
-- Statistics (Chats, Messages, Days)
-- Quick access to Settings, Theme, Usage, Help
 
 ## Installation
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/chatgpt-clone-ui.git
+git clone https://github.com/Chloelee05/SMU_datathon/
 cd chatgpt-clone-ui
 ```
 
@@ -42,12 +22,17 @@ cd chatgpt-clone-ui
 pip install -r requirements.txt
 ```
 
-3. **Run the application**
+4. **Set OPENAI_API_KEY**
+```bash
+pip install -r requirements.txt
+```
+
+4. **Run the application**
 ```bash
 streamlit run app.py
 ```
 
-4. **Open in browser**
+5. **Open in browser**
 ```
 http://localhost:8501
 ```
